@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmartPark KE</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app">
+    <header>
+      <h1>SmartPark KE</h1>
+      <p>Automatic parking slot display and management</p>
+    </header>
+
+    <section class="controls">
+      <div>
+        <label for="plateInput">Vehicle plate</label>
+        <input id="plateInput" type="text" placeholder="KDA 123A">
+        <button id="parkBtn">Park Vehicle</button>
+      </div>
+      <div>
+        <label for="statusFilter">Filter slots</label>
+        <select id="statusFilter">
+          <option value="all">All</option>
+          <option value="available">Available</option>
+          <option value="occupied">Occupied</option>
+          <option value="reserved">Reserved</option>
+          <option value="maintenance">Maintenance</option>
+        </select>
+      </div>
+    </section>
+
+    <section id="stats" class="stats"></section>
+
+    <section>
+      <h2>Parking Slots</h2>
+      <p id="message" aria-live="polite"></p>
+      <div id="slotGrid" class="slot-grid"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
