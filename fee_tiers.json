@@ -1,0 +1,7 @@
+[
+    {"max_minutes": 30, "fee": 0},
+    {"max_minutes": 120, "fee": 50},
+    {"max_minutes": 240, "fee": 100},
+    {"max_minutes": 360, "fee": 300},
+    {"max_minutes": null, "fee": 500}
+]

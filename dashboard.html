@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SmartPark KE</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: Arial, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    margin: 0;
+    padding: 20px;
+  }
+  h1 { text-align: center; margin: 0 0 4px; }
+  h2 { font-size: 1.1em; color: #94a3b8; margin: 0 0 12px; }
+  #summary { text-align: center; margin: 8px 0 24px; font-size: 1.2em; color: #94a3b8; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+    gap: 8px;
+    max-width: 900px;
+    margin: 0 auto 30px;
+  }
+  .slot { padding: 12px 0; border-radius: 8px; font-weight: bold; text-align: center; }
+  .free { background: #16a34a; }
+  .occupied { background: #dc2626; }
+
+  .panels {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  .panel {
+    background: #1e293b;
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .panel.testing { border: 1px dashed #f59e0b; }
+  .panel.testing h2 { color: #f59e0b; }
+
+  input, select, button {
+    width: 100%;
+    padding: 8px;
+    margin-top: 6px;
+    border-radius: 6px;
+    border: 1px solid #334155;
+    background: #0f172a;
+    color: #e2e8f0;
+    font-size: 1em;
+  }
+  button {
+    background: #2563eb;
+    border: none;
+    cursor: pointer;
+    margin-top: 10px;
+    font-weight: bold;
+  }
+  button:hover { background: #1d4ed8; }
+  button.secondary { background: #475569; }
+  button.secondary:hover { background: #334155; }
+
+  .message { margin-top: 10px; font-size: 0.95em; min-height: 1.2em; }
+  .message.success { color: #4ade80; }
+  .message.error { color: #f87171; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em; }
+  td, th { padding: 4px 6px; text-align: left; border-bottom: 1px solid #334155; }
+
+  #updated { text-align: center; margin-top: 20px; font-size: 0.8em; color: #64748b; }
+</style>
+</head>
+<body>
+
+<h1>SmartPark KE</h1>
+<div id="summary">Loading...</div>
+<div class="grid" id="grid"></div>
+
+<div class="panels">
+
+  <div class="panel">
+    <h2>Vehicle Entry</h2>
+    <input type="text" id="entryPlate" placeholder="Plate number">
+    <button onclick="doEntry()">Park Vehicle</button>
+    <div class="message" id="entryMessage"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Vehicle Exit</h2>
+    <input type="text" id="exitPlate" placeholder="Plate number">
+    <button onclick="getQuote()">Get Amount Due</button>
+
+    <div id="paymentSection" style="display:none; margin-top:10px;">
+      <div id="amountDueText" style="margin-bottom:6px; font-weight:bold;"></div>
+      <select id="paymentMethod">
+        <option value="M-Pesa">M-Pesa</option>
+        <option value="Card">Card</option>
+        <option value="Cash">Cash</option>
+      </select>
+      <input type="number" id="amountReceived" placeholder="Amount received (Kshs)">
+      <button onclick="confirmPayment()">Confirm Payment</button>
+    </div>
+
+    <div class="message" id="exitMessage"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Collections Report</h2>
+    <button class="secondary" onclick="loadReport()">Refresh Report</button>
+    <div id="reportOutput"></div>
+  </div>
+
+  <div class="panel testing">
+    <h2>Testing Only</h2>
+    <p style="font-size:0.85em; color:#94a3b8; margin:0 0 8px;">
+      Simulate an earlier arrival time on a parked vehicle, so you can test
+      paid exits without waiting in real time. Not part of the client's
+      requirements.
+    </p>
+    <input type="text" id="simPlate" placeholder="Plate number (already parked)">
+    <input type="number" id="simMinutes" placeholder="Minutes ago it arrived">
+    <button class="secondary" onclick="doSimulate()">Back-date Arrival</button>
+    <div class="message" id="simMessage"></div>
+  </div>
+
+</div>
+
+<div id="updated"></div>
+
+<script>
+let currentExitPlate = null;
+
+function setMessage(elementId, text, isError) {
+  const el = document.getElementById(elementId);
+  el.textContent = text;
+  el.className = "message " + (isError ? "error" : "success");
+}
+
+async function postJSON(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {})
+  });
+  const data = await response.json();
+  return { ok: response.ok, data: data };
+}
+
+async function refreshStatus() {
+  try {
+    const response = await fetch("/api/status");
+    const data = await response.json();
+
+    document.getElementById("summary").textContent =
+      data.available_count + " of " + data.total_slots + " slots available";
+
+    const grid = document.getElementById("grid");
+    grid.innerHTML = "";
+    data.slots.forEach(function (slot) {
+      const div = document.createElement("div");
+      div.className = "slot " + (slot.occupied ? "occupied" : "free");
+      div.textContent = slot.slot_number;
+      grid.appendChild(div);
+    });
+
+    document.getElementById("updated").textContent = "Last updated: " + data.generated_at;
+  } catch (error) {
+    document.getElementById("summary").textContent = "Waiting for parking system data...";
+  }
+}
+
+async function doEntry() {
+  const plate = document.getElementById("entryPlate").value.trim();
+  if (!plate) { setMessage("entryMessage", "Enter a plate number.", true); return; }
+
+  const result = await postJSON("/api/entry", { plate: plate });
+  setMessage("entryMessage", result.data.message, !result.ok);
+  if (result.ok) {
+    document.getElementById("entryPlate").value = "";
+    refreshStatus();
+  }
+}
+
+async function getQuote() {
+  const plate = document.getElementById("exitPlate").value.trim();
+  if (!plate) { setMessage("exitMessage", "Enter a plate number.", true); return; }
+
+  const result = await postJSON("/api/exit/quote", { plate: plate });
+  if (!result.ok) {
+    setMessage("exitMessage", result.data.message, true);
+    document.getElementById("paymentSection").style.display = "none";
+    return;
+  }
+
+  currentExitPlate = plate;
+  setMessage("exitMessage", "", false);
+
+  if (result.data.amount_due === 0) {
+    // Free tier -- pay immediately with no method/amount needed
+    const payResult = await postJSON("/api/exit/pay", { plate: plate, method: "N/A (free)", amount_received: 0 });
+    setMessage("exitMessage", payResult.data.message, !payResult.ok);
+    document.getElementById("paymentSection").style.display = "none";
+    document.getElementById("exitPlate").value = "";
+    refreshStatus();
+    return;
+  }
+
+  document.getElementById("amountDueText").textContent = "Amount due: Kshs " + result.data.amount_due;
+  document.getElementById("paymentSection").style.display = "block";
+}
+
+async function confirmPayment() {
+  const method = document.getElementById("paymentMethod").value;
+  const amount = parseFloat(document.getElementById("amountReceived").value);
+
+  if (isNaN(amount)) {
+    setMessage("exitMessage", "Enter a valid amount received.", true);
+    return;
+  }
+
+  const result = await postJSON("/api/exit/pay", { plate: currentExitPlate, method: method, amount_received: amount });
+  setMessage("exitMessage", result.data.message, !result.ok);
+
+  if (result.ok) {
+    document.getElementById("paymentSection").style.display = "none";
+    document.getElementById("exitPlate").value = "";
+    document.getElementById("amountReceived").value = "";
+    refreshStatus();
+  }
+}
+
+async function loadReport() {
+  const response = await fetch("/api/report");
+  const data = await response.json();
+
+  if (data.total_transactions === 0) {
+    document.getElementById("reportOutput").innerHTML = "<p>No transactions recorded yet.</p>";
+    return;
+  }
+
+  let rows = "";
+  for (const method in data.by_method) {
+    rows += "<tr><td>" + method + "</td><td>" + data.by_method[method] + "</td></tr>";
+  }
+
+  document.getElementById("reportOutput").innerHTML =
+    "<p>Total transactions: " + data.total_transactions + "</p>" +
+    "<p>Total collected: Kshs " + data.total_collected.toFixed(2) + "</p>" +
+    "<table><tr><th>Method</th><th>Count</th></tr>" + rows + "</table>";
+}
+
+async function doSimulate() {
+  const plate = document.getElementById("simPlate").value.trim();
+  const minutes = parseFloat(document.getElementById("simMinutes").value);
+
+  if (!plate || isNaN(minutes)) {
+    setMessage("simMessage", "Enter a plate and a number of minutes.", true);
+    return;
+  }
+
+  const result = await postJSON("/api/simulate-arrival", { plate: plate, minutes_ago: minutes });
+  setMessage("simMessage", result.data.message, !result.ok);
+}
+
+refreshStatus();
+setInterval(refreshStatus, 2000);
+</script>
+</body>
+</html>
